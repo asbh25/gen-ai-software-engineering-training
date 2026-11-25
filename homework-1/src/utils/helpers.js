@@ -72,3 +72,22 @@ function calculateSummary(transactions, accountId) {
 }
 
 module.exports.calculateSummary = calculateSummary;
+
+// Business rule: a balance can never go negative.
+// A withdrawal or a transfer is only allowed if the sending account has enough money
+// IN THAT CURRENCY (completed transactions only). Deposits always pass.
+// Returns { ok: true } or { ok: false, reason }.
+function checkFunds(transactions, { type, fromAccount, amount, currency }) {
+  if (type === 'deposit') return { ok: true };
+  const available = calculateBalances(transactions, fromAccount)[currency] || 0;
+  // compare in cents to avoid floating point surprises
+  if (Math.round((available - amount) * 100) < 0) {
+    return {
+      ok: false,
+      reason: `Insufficient funds: available ${available} ${currency}, requested ${amount} ${currency}`,
+    };
+  }
+  return { ok: true };
+}
+
+module.exports.checkFunds = checkFunds;

@@ -3,11 +3,11 @@ const { CURRENCIES } = require('../utils/currencies');
 
 const ACCOUNT_REGEX = /^ACC-[A-Za-z0-9]{5}$/;
 
-// At most 2 decimal places. Compares against the nearest cent with a tiny
-// tolerance so 0.29 passes (0.29 * 100 = 28.999999999999996) and 1.005 fails.
+// At most 2 decimal places: the number must equal itself rounded to 2 decimals.
+// Works on the shortest decimal form, so 0.29 and 1234567.89 pass while 1.005 and 100.555 fail
+// (an earlier "multiply by 100" approach wrongly rejected large amounts like 1234567.89).
 function hasMaxTwoDecimals(n) {
-  const cents = n * 100;
-  return Math.abs(cents - Math.round(cents)) < 1e-8;
+  return Number(n.toFixed(2)) === n;
 }
 
 const isPresent = (v) => v !== undefined && v !== null;

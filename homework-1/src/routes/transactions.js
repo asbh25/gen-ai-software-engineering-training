@@ -2,7 +2,7 @@ const express = require('express');
 const Transaction = require('../models/transaction');
 const { validateTransaction } = require('../validators/transactionValidator');
 const { validateFilters } = require('../validators/filterValidator');
-const { filterTransactions } = require('../utils/helpers');
+const { filterTransactions, checkFunds } = require('../utils/helpers');
 const { transactionsToCsv } = require('../utils/csv');
 
 const router = express.Router();
@@ -12,7 +12,11 @@ router.post('/', (req, res) => {
   if (details.length > 0) {
     return res.status(400).json({ error: 'Validation failed', details });
   }
-  res.status(201).json(Transaction.create(req.body));
+  // Business rule: balances never go negative. An overdraft is still recorded,
+  // but as a `failed` transaction with a reason (and it does not change any balance).
+  const funds = checkFunds(Transaction.findAll(), req.body);
+  const outcome = funds.ok ? {} : { status: 'failed', failureReason: funds.reason };
+  res.status(201).json(Transaction.create(req.body, outcome));
 });
 
 // Supports ?accountId=&type=&from=&to= (all optional, combined with AND)

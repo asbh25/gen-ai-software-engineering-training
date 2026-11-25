@@ -1,4 +1,4 @@
-const COLUMNS = ['id', 'fromAccount', 'toAccount', 'amount', 'currency', 'type', 'timestamp', 'status'];
+const COLUMNS = ['id', 'fromAccount', 'toAccount', 'amount', 'currency', 'type', 'timestamp', 'status', 'failureReason'];
 
 // RFC 4180 escaping: wrap in quotes if the value has a comma, quote or line break.
 function escapeCell(value) {

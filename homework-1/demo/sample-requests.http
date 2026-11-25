@@ -1,0 +1,205 @@
+### Sample requests for Tasks 1-3 (core API, validation, filters)
+### Use with the VS Code "REST Client" extension.
+### Best with the preloaded demo data:  ./demo/run.sh --sample-data
+### (Task 4 requests are in sample-requests-task4.http)
+
+@baseUrl = http://localhost:3000
+
+###############################################################################
+# TASK 1: core endpoints
+###############################################################################
+
+### 1.1 Create a deposit  (expect 201)
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{
+  "toAccount": "ACC-12345",
+  "amount": 500,
+  "currency": "USD",
+  "type": "deposit"
+}
+
+### 1.2 Create a transfer  (expect 201)
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{
+  "fromAccount": "ACC-12345",
+  "toAccount": "ACC-67890",
+  "amount": 100.50,
+  "currency": "USD",
+  "type": "transfer"
+}
+
+### 1.3 Create a withdrawal  (expect 201)
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{
+  "fromAccount": "ACC-12345",
+  "amount": 50,
+  "currency": "USD",
+  "type": "withdrawal"
+}
+
+### 1.4 List all transactions  (expect 200)
+GET {{baseUrl}}/transactions
+
+### 1.5 Get one transaction  (replace the id with one from 1.4; expect 200)
+GET {{baseUrl}}/transactions/PASTE-AN-ID-HERE
+
+### 1.6 Unknown transaction id  (expect 404)
+GET {{baseUrl}}/transactions/does-not-exist
+
+### 1.7 Account balance, per currency  (expect 200)
+GET {{baseUrl}}/accounts/ACC-12345/balance
+
+### 1.8 Balance of an account without transactions  (expect 200, empty balances)
+GET {{baseUrl}}/accounts/ACC-00000/balance
+
+###############################################################################
+# BUSINESS RULE: a balance can never go negative
+# An overdraft is stored as a FAILED transaction: still HTTP 201, but
+# "status": "failed" with a "failureReason", and no balance changes.
+# (Run 1.1-1.3 first on a fresh server, or start with --sample-data.)
+###############################################################################
+
+### R.1 Withdraw more than the balance  (expect 201, status "failed")
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{
+  "fromAccount": "ACC-12345",
+  "amount": 99999,
+  "currency": "USD",
+  "type": "withdrawal"
+}
+
+### R.2 Transfer more than the balance  (expect 201, status "failed")
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{
+  "fromAccount": "ACC-12345",
+  "toAccount": "ACC-67890",
+  "amount": 99999,
+  "currency": "USD",
+  "type": "transfer"
+}
+
+### R.3 Funds are checked per currency: ACC-12345 has no EUR  (expect 201, status "failed")
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{
+  "fromAccount": "ACC-12345",
+  "amount": 1,
+  "currency": "EUR",
+  "type": "withdrawal"
+}
+
+### R.4 Balance is unchanged by the failed attempts
+GET {{baseUrl}}/accounts/ACC-12345/balance
+
+### R.5 Failed transactions stay in the history (status + failureReason)
+GET {{baseUrl}}/transactions?accountId=ACC-12345&type=withdrawal
+
+###############################################################################
+# TASK 2: validation (every request below expects 400)
+###############################################################################
+
+### 2.1 Too many decimal places
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{ "toAccount": "ACC-12345", "amount": 100.555, "currency": "USD", "type": "deposit" }
+
+### 2.2 Negative amount
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{ "toAccount": "ACC-12345", "amount": -5, "currency": "USD", "type": "deposit" }
+
+### 2.3 Amount is a string
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{ "toAccount": "ACC-12345", "amount": "abc", "currency": "USD", "type": "deposit" }
+
+### 2.4 Bad account format
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{ "toAccount": "ACC-123", "amount": 10, "currency": "USD", "type": "deposit" }
+
+### 2.5 Invalid currency code
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{ "toAccount": "ACC-12345", "amount": 10, "currency": "XXX", "type": "deposit" }
+
+### 2.6 Transfer to the same account
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{ "fromAccount": "ACC-12345", "toAccount": "ACC-12345", "amount": 10, "currency": "USD", "type": "transfer" }
+
+### 2.7 Transfer without fromAccount
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{ "toAccount": "ACC-12345", "amount": 5, "currency": "USD", "type": "transfer" }
+
+### 2.8 Everything wrong at once  (all 4 errors are returned together)
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{ "fromAccount": "x", "toAccount": "y", "amount": -1.234, "currency": "ZZZ", "type": "transfer" }
+
+### 2.9 Malformed JSON  (expect 400 "Invalid JSON body")
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{bad json
+
+###############################################################################
+# TASK 3: filtering  GET /transactions?accountId=&type=&from=&to=
+# With --sample-data: 16 transactions between 2024-01-02 and 2024-02-16
+###############################################################################
+
+### 3.1 By account (sender OR receiver)
+GET {{baseUrl}}/transactions?accountId=ACC-12345
+
+### 3.2 By type (sample data: 5 transfers)
+GET {{baseUrl}}/transactions?type=transfer
+
+### 3.3 By date range, whole days in UTC (sample data: 9 transactions in January)
+GET {{baseUrl}}/transactions?from=2024-01-01&to=2024-01-31
+
+### 3.4 Only a lower bound
+GET {{baseUrl}}/transactions?from=2024-02-01
+
+### 3.5 A single day
+GET {{baseUrl}}/transactions?from=2024-01-15&to=2024-01-15
+
+### 3.6 Exact time range with ISO 8601 datetimes
+GET {{baseUrl}}/transactions?from=2024-01-10T00:00:00Z&to=2024-01-10T23:59:59Z
+
+### 3.7 Combined filters (sample data: 2 transfers of ACC-12345 in January)
+GET {{baseUrl}}/transactions?accountId=ACC-12345&type=transfer&from=2024-01-01&to=2024-01-31
+
+### 3.8 No matches  (expect 200 and [])
+GET {{baseUrl}}/transactions?accountId=ACC-99999
+
+### 3.9 Invalid type  (expect 400)
+GET {{baseUrl}}/transactions?type=gift
+
+### 3.10 Invalid date  (expect 400)
+GET {{baseUrl}}/transactions?from=yesterday
+
+### 3.11 from after to  (expect 400)
+GET {{baseUrl}}/transactions?from=2024-02-01&to=2024-01-01
+
+### 3.12 Several invalid filters at once  (expect 400 with 3 errors)
+GET {{baseUrl}}/transactions?accountId=bad&type=gift&from=x
