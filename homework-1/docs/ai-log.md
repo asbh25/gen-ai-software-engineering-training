@@ -4,7 +4,7 @@
 **Stack:** Node.js + Express
 
 > One entry per meaningful prompt. Keep it short: what I asked, what AI did, what I changed or checked myself.
-> Screenshots live in `docs/screenshots/` (`ai-prompt-N.png` = prompt for entry #N, `api-running-1.png` = server + curl requests after Task 1, `api-running-2.png` = all validation errors in one response, `api-running-3.png` = invalid filter error).
+> Screenshots live in `docs/screenshots/` (`ai-prompt-N.png` = prompt for entry #N, `api-running-1.png` = server + curl requests after Task 1, `api-running-2.png` = all validation errors in one response, `api-running-3.png` = invalid filter error, `sample-requests-task4.png` = Task 4 demo script output).
 
 ---
 
@@ -86,3 +86,12 @@
 - **Screenshot:** ![AI prompt 8 (1/2)](screenshots/ai-prompt-8-1.png)
   ![AI prompt 8 (2/2)](screenshots/ai-prompt-8-2.png)
 - **Invalid filter (400):** ![Invalid filter error](screenshots/api-running-3.png)
+
+### #9 — Task 4: summary endpoint (Option A) + CSV export (Option C) + demo requests
+- **Date:** 2026-11-25
+- **Prompt:** "Do the 4th task: Transaction Summary Endpoint and Transaction Export. Then create sample requests for 4th task inside the demo folder."
+- **AI result:** Added `GET /accounts/:accountId/summary` (`calculateSummary()` in `utils/helpers.js`), `GET /transactions/export` (new `utils/csv.js`, route in `routes/transactions.js`), `demo/sample-requests-task4.http` and `demo/sample-requests-task4.sh`; documented both features and curl examples in the README.
+- **Design decisions:** summary totals are per currency; transfers count in `transactionCount`/most recent date but not in deposits/withdrawals; export reuses the list filters, defaults to CSV, rejects other formats with 400, escapes cells per RFC 4180, and is registered **before** `/transactions/:id` so `export` isn't parsed as an id.
+- **My changes / verification:** Tested on a separate port (3100): summary for accounts with/without transactions, CSV headers and rows, filtered export, empty export (header only), `format=xml` → 400, `/transactions/:id` still works, CSV escaping of commas/quotes. Ran `demo/sample-requests-task4.sh` end to end.
+- **Screenshot:** ![AI prompt 9](screenshots/ai-prompt-9.png)
+- **Demo requests running (`demo/sample-requests-task4.sh`):** ![Task 4 sample requests](screenshots/sample-requests-task4.png)

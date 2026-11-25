@@ -36,3 +36,39 @@ function filterTransactions(transactions, { accountId, type, from, to }) {
 }
 
 module.exports.filterTransactions = filterTransactions;
+
+// Summary of one account. Money totals are per currency (like balances).
+//   totalDeposits    -> deposits received by the account
+//   totalWithdrawals -> withdrawals made from the account
+//   transactionCount -> every transaction involving the account (any type)
+//   mostRecentTransactionDate -> latest timestamp, or null when there are none
+function calculateSummary(transactions, accountId) {
+  const related = transactions.filter(
+    (t) => t.fromAccount === accountId || t.toAccount === accountId
+  );
+  const totalDeposits = {};
+  const totalWithdrawals = {};
+  const add = (target, currency, amount) => {
+    target[currency] = Math.round(((target[currency] || 0) + amount) * 100) / 100;
+  };
+
+  let mostRecent = null;
+  for (const t of related) {
+    if (mostRecent === null || Date.parse(t.timestamp) > Date.parse(mostRecent)) {
+      mostRecent = t.timestamp;
+    }
+    if (t.status !== 'completed') continue;
+    if (t.type === 'deposit' && t.toAccount === accountId) add(totalDeposits, t.currency, t.amount);
+    if (t.type === 'withdrawal' && t.fromAccount === accountId) add(totalWithdrawals, t.currency, t.amount);
+  }
+
+  return {
+    accountId,
+    totalDeposits,
+    totalWithdrawals,
+    transactionCount: related.length,
+    mostRecentTransactionDate: mostRecent,
+  };
+}
+
+module.exports.calculateSummary = calculateSummary;

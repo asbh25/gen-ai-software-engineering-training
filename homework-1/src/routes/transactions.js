@@ -3,6 +3,7 @@ const Transaction = require('../models/transaction');
 const { validateTransaction } = require('../validators/transactionValidator');
 const { validateFilters } = require('../validators/filterValidator');
 const { filterTransactions } = require('../utils/helpers');
+const { transactionsToCsv } = require('../utils/csv');
 
 const router = express.Router();
 
@@ -21,6 +22,25 @@ router.get('/', (req, res) => {
     return res.status(400).json({ error: 'Validation failed', details });
   }
   res.status(200).json(filterTransactions(Transaction.findAll(), filters));
+});
+
+// Export as CSV. Must be registered BEFORE '/:id', otherwise "export" is treated as an id.
+// Accepts the same filters as the list endpoint (?accountId=&type=&from=&to=).
+router.get('/export', (req, res) => {
+  const { format = 'csv', ...query } = req.query;
+  const { details, filters } = validateFilters(query);
+  if (format !== 'csv') {
+    details.unshift({ field: 'format', message: 'Unsupported format. Only "csv" is supported' });
+  }
+  if (details.length > 0) {
+    return res.status(400).json({ error: 'Validation failed', details });
+  }
+  const csv = transactionsToCsv(filterTransactions(Transaction.findAll(), filters));
+  res
+    .status(200)
+    .set('Content-Type', 'text/csv; charset=utf-8')
+    .set('Content-Disposition', 'attachment; filename="transactions.csv"')
+    .send(csv);
 });
 
 router.get('/:id', (req, res) => {

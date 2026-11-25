@@ -10,7 +10,7 @@
 
 A minimal REST API for banking transactions built with **Node.js + Express**, using in-memory storage (no database). Data is lost when the server restarts.
 
-> 🚧 **Work in progress.** Currently implemented: **Task 1 (core API)**, **Task 2 (transaction validation)** and **Task 3 (transaction history filters)**. Still to do: an additional feature (Task 4).
+> 🚧 **Work in progress.** Currently implemented: **Task 1 (core API)**, **Task 2 (transaction validation)**, **Task 3 (transaction history filters)** and **Task 4 (two additional features: Option A summary endpoint and Option C CSV export)**.
 
 ### Endpoints
 
@@ -20,6 +20,8 @@ A minimal REST API for banking transactions built with **Node.js + Express**, us
 | `GET` | `/transactions` | List transactions, optionally filtered (`accountId`, `type`, `from`, `to`) | 200, 400 |
 | `GET` | `/transactions/:id` | Get one transaction by ID | 200, 404 |
 | `GET` | `/accounts/:accountId/balance` | Get account balance | 200 |
+| `GET` | `/accounts/:accountId/summary` | Account summary: total deposits, total withdrawals, transaction count, most recent date *(Task 4, Option A)* | 200 |
+| `GET` | `/transactions/export?format=csv` | Export transactions as CSV, supports the same filters as the list *(Task 4, Option C)* | 200, 400 |
 | `GET` | `/health` | Health check | 200 |
 
 Unknown routes return `404`; malformed JSON bodies return `400`; unexpected errors return `500`.
@@ -31,15 +33,19 @@ src/
 ├── index.js                          # starts the server (port 3000)
 ├── app.js                            # Express app, routers, error handlers
 ├── routes/
-│   ├── transactions.js               # /transactions endpoints
-│   └── accounts.js                   # /accounts/:accountId/balance
+│   ├── transactions.js               # /transactions endpoints (+ CSV export)
+│   └── accounts.js                   # /accounts/:accountId/balance and /summary
 ├── models/transaction.js             # in-memory storage + create/find
 ├── validators/
 │   ├── transactionValidator.js       # POST body validation
 │   └── filterValidator.js            # GET /transactions query validation
 └── utils/
-    ├── helpers.js                    # balance calculation + transaction filtering
+    ├── helpers.js                    # balance, summary and transaction filtering
+    ├── csv.js                        # CSV formatting/escaping for the export
     └── currencies.js                 # ISO 4217 currency code list
+demo/
+├── sample-requests-task4.http        # VS Code REST Client requests for Task 4
+└── sample-requests-task4.sh          # same requests as a runnable curl script
 ```
 
 ---
@@ -95,6 +101,33 @@ Decisions:
 - **Inclusive range:** a date-only `from` means the start of that day (`00:00:00.000`) and a date-only `to` means the **end** of that day (`23:59:59.999`), so `from=2024-01-31&to=2024-01-31` returns the whole day.
 - **Strict input:** invalid values return `400` with the same `{"error": "Validation failed", "details": [...]}` format instead of being silently ignored. That covers a bad account format, an unknown type, a non-date (`from=yesterday`), an impossible date (`2024-02-30`), `from` later than `to`, and a repeated parameter (`?type=a&type=b`). All problems are reported together.
 - **No match** is not an error: it returns `200` with `[]`.
+
+### Additional features (Task 4)
+
+Two options were implemented: **A (summary)** and **C (CSV export)**.
+
+**Option A — `GET /accounts/:accountId/summary`**
+
+| Field | Meaning |
+|-------|---------|
+| `totalDeposits` | Sum of completed `deposit` transactions received by the account, **per currency** |
+| `totalWithdrawals` | Sum of completed `withdrawal` transactions made from the account, **per currency** |
+| `transactionCount` | Number of transactions involving the account as sender or receiver — **all types**, transfers included |
+| `mostRecentTransactionDate` | Timestamp of the latest transaction, or `null` if there are none |
+
+- Transfers are **not** added to deposits/withdrawals (they move money between accounts rather than entering or leaving the bank), but they do count in `transactionCount` and `mostRecentTransactionDate`.
+- Totals are per currency for the same reason as balances: USD and EUR can't be added together.
+- An account without transactions returns `200` with empty totals, `transactionCount: 0` and `null` date (same idea as the balance endpoint).
+
+**Option C — `GET /transactions/export?format=csv`**
+
+- Returns `text/csv` with a header row (`id,fromAccount,toAccount,amount,currency,type,timestamp,status`) and `Content-Disposition: attachment; filename="transactions.csv"`, so browsers download it as a file.
+- `format` is optional and defaults to `csv`; any other value returns `400`.
+- It accepts the **same filters** as the list endpoint (`accountId`, `type`, `from`, `to`), so you can export just one account or one month. No matches → only the header row.
+- Missing accounts (e.g. `fromAccount` of a deposit) are exported as empty cells. Values are escaped per RFC 4180 (quotes, commas, line breaks).
+- The route is registered **before** `/transactions/:id`; otherwise Express would treat `export` as a transaction id and return 404.
+
+Ready-made requests for both features are in [`demo/sample-requests-task4.http`](demo/sample-requests-task4.http) and [`demo/sample-requests-task4.sh`](demo/sample-requests-task4.sh).
 
 ---
 
@@ -236,7 +269,71 @@ curl "http://localhost:3000/transactions?from=$(date -u +%F)&to=$(date -u +%F)"
 curl "http://localhost:3000/transactions?accountId=ACC-99999"
 ```
 
-### 6. Validation error examples (Task 2)
+### 6. Account summary — `GET /accounts/:accountId/summary` (Task 4, Option A)
+
+```bash
+curl http://localhost:3000/accounts/ACC-12345/summary
+```
+Response — `200 OK` (after the deposit, transfer and withdrawal above plus a 250.25 USD and a 20 EUR deposit):
+```json
+{
+  "accountId": "ACC-12345",
+  "totalDeposits": { "USD": 750.25, "EUR": 20 },
+  "totalWithdrawals": { "USD": 50 },
+  "transactionCount": 5,
+  "mostRecentTransactionDate": "2026-11-25T13:01:03.698Z"
+}
+```
+
+Account with no transactions:
+```bash
+curl http://localhost:3000/accounts/ACC-00000/summary
+```
+```json
+{
+  "accountId": "ACC-00000",
+  "totalDeposits": {},
+  "totalWithdrawals": {},
+  "transactionCount": 0,
+  "mostRecentTransactionDate": null
+}
+```
+
+### 7. Export as CSV — `GET /transactions/export?format=csv` (Task 4, Option C)
+
+```bash
+# print to the terminal (-i also shows the headers)
+curl -i "http://localhost:3000/transactions/export?format=csv"
+
+# save to a file
+curl -o transactions.csv "http://localhost:3000/transactions/export?format=csv"
+
+# export with filters (same as GET /transactions)
+curl "http://localhost:3000/transactions/export?format=csv&type=transfer"
+curl "http://localhost:3000/transactions/export?format=csv&accountId=ACC-12345&from=2024-01-01&to=2024-01-31"
+```
+Response — `200 OK`, `Content-Type: text/csv; charset=utf-8`:
+```csv
+id,fromAccount,toAccount,amount,currency,type,timestamp,status
+13563973-7a73-4486-8e11-3a7aba7122ee,,ACC-12345,500,USD,deposit,2026-11-25T13:01:24.504Z,completed
+e273d83c-363e-4159-bbf3-58e1995fc148,ACC-12345,ACC-67890,100.5,USD,transfer,2026-11-25T13:01:24.550Z,completed
+1d456bcd-081b-4d5d-a1b4-5591cba4e88b,ACC-12345,,50,USD,withdrawal,2026-11-25T13:01:24.562Z,completed
+```
+
+Unsupported format → `400`:
+```bash
+curl -i "http://localhost:3000/transactions/export?format=xml"
+```
+```json
+{
+  "error": "Validation failed",
+  "details": [
+    { "field": "format", "message": "Unsupported format. Only \"csv\" is supported" }
+  ]
+}
+```
+
+### 8. Validation error examples (Task 2)
 
 All of these return `400` with `{"error": "Validation failed", "details": [...]}`.
 
@@ -331,7 +428,7 @@ curl -i -X POST http://localhost:3000/transactions \
 
 ![All validation errors reported in one response](docs/screenshots/api-running-2.png)
 
-### 7. Invalid filters (Task 3)
+### 9. Invalid filters (Task 3)
 
 All return `400`. Invalid type:
 ```bash
@@ -361,7 +458,7 @@ curl -i "http://localhost:3000/transactions?type=deposit&type=transfer" # repeat
 curl -i "http://localhost:3000/transactions?accountId=bad&type=gift&from=x"
 ```
 
-### 8. Other errors
+### 10. Other errors
 
 **Malformed JSON** → `400 {"error": "Invalid JSON body"}`:
 ```bash
