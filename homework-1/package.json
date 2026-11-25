@@ -1,0 +1,13 @@
+{
+  "name": "homework-1-banking-api",
+  "version": "1.0.0",
+  "description": "Simple Banking Transactions REST API (AI-assisted homework 1)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.3.0"
+  }
+}
