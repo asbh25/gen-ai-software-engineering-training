@@ -1,0 +1,18 @@
+[
+  { "toAccount": "ACC-12345", "amount": 1000, "currency": "USD", "type": "deposit", "timestamp": "2024-01-02T09:00:00.000Z" },
+  { "toAccount": "ACC-67890", "amount": 500, "currency": "USD", "type": "deposit", "timestamp": "2024-01-03T10:30:00.000Z" },
+  { "toAccount": "ACC-ABCDE", "amount": 300, "currency": "EUR", "type": "deposit", "timestamp": "2024-01-05T14:15:00.000Z" },
+  { "fromAccount": "ACC-12345", "toAccount": "ACC-67890", "amount": 250.5, "currency": "USD", "type": "transfer", "timestamp": "2024-01-10T11:00:00.000Z" },
+  { "fromAccount": "ACC-12345", "amount": 800, "currency": "USD", "type": "withdrawal", "timestamp": "2024-01-12T10:00:00.000Z", "status": "failed", "failureReason": "Insufficient funds: available 749.5 USD, requested 800 USD" },
+  { "fromAccount": "ACC-12345", "amount": 100, "currency": "USD", "type": "withdrawal", "timestamp": "2024-01-15T16:45:00.000Z" },
+  { "fromAccount": "ACC-67890", "toAccount": "ACC-12345", "amount": 75.25, "currency": "USD", "type": "transfer", "timestamp": "2024-01-20T08:20:00.000Z" },
+  { "fromAccount": "ACC-ABCDE", "amount": 400, "currency": "EUR", "type": "withdrawal", "timestamp": "2024-01-25T12:00:00.000Z", "status": "failed", "failureReason": "Insufficient funds: available 300 EUR, requested 400 EUR" },
+  { "fromAccount": "ACC-ABCDE", "amount": 50, "currency": "EUR", "type": "withdrawal", "timestamp": "2024-01-31T23:59:59.000Z" },
+  { "toAccount": "ACC-12345", "amount": 200, "currency": "USD", "type": "deposit", "timestamp": "2024-02-01T00:00:00.000Z" },
+  { "fromAccount": "ACC-67890", "toAccount": "ACC-ABCDE", "amount": 120, "currency": "USD", "type": "transfer", "timestamp": "2024-02-05T13:10:00.000Z" },
+  { "fromAccount": "ACC-ABCDE", "toAccount": "ACC-12345", "amount": 500, "currency": "EUR", "type": "transfer", "timestamp": "2024-02-08T09:00:00.000Z", "status": "failed", "failureReason": "Insufficient funds: available 250 EUR, requested 500 EUR" },
+  { "fromAccount": "ACC-12345", "amount": 5000, "currency": "USD", "type": "withdrawal", "timestamp": "2024-02-10T09:30:00.000Z", "status": "failed", "failureReason": "Insufficient funds: available 924.75 USD, requested 5000 USD" },
+  { "fromAccount": "ACC-67890", "toAccount": "ACC-12345", "amount": 40, "currency": "USD", "type": "transfer", "timestamp": "2024-02-12T15:00:00.000Z", "status": "pending" },
+  { "toAccount": "ACC-12345", "amount": 15000, "currency": "JPY", "type": "deposit", "timestamp": "2024-02-14T12:00:00.000Z" },
+  { "fromAccount": "ACC-ABCDE", "amount": 120, "currency": "USD", "type": "withdrawal", "timestamp": "2024-02-16T10:00:00.000Z" }
+]

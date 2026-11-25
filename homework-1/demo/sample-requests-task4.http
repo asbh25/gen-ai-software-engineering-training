@@ -1,0 +1,116 @@
+### Task 4 sample requests (Option A: summary, Option C: CSV export)
+### Use with the VS Code "REST Client" extension. Start the API first: npm start
+### Run the "setup" requests first so there is data to summarize / export.
+
+@baseUrl = http://localhost:3000
+
+###############################################################################
+# SETUP: create some transactions for ACC-12345 / ACC-67890
+###############################################################################
+
+### Setup 1: deposit 500 USD to ACC-12345
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{
+  "toAccount": "ACC-12345",
+  "amount": 500,
+  "currency": "USD",
+  "type": "deposit"
+}
+
+### Setup 2: deposit 250.25 USD to ACC-12345
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{
+  "toAccount": "ACC-12345",
+  "amount": 250.25,
+  "currency": "USD",
+  "type": "deposit"
+}
+
+### Setup 3: deposit 20 EUR to ACC-12345 (a second currency)
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{
+  "toAccount": "ACC-12345",
+  "amount": 20,
+  "currency": "EUR",
+  "type": "deposit"
+}
+
+### Setup 4: transfer 100.50 USD ACC-12345 -> ACC-67890
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{
+  "fromAccount": "ACC-12345",
+  "toAccount": "ACC-67890",
+  "amount": 100.50,
+  "currency": "USD",
+  "type": "transfer"
+}
+
+### Setup 5: withdraw 50 USD from ACC-12345
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{
+  "fromAccount": "ACC-12345",
+  "amount": 50,
+  "currency": "USD",
+  "type": "withdrawal"
+}
+
+###############################################################################
+# OPTION A: Transaction summary  GET /accounts/:accountId/summary
+###############################################################################
+
+### A1: Summary of ACC-12345
+# Expected 200: totalDeposits {USD: 750.25, EUR: 20}, totalWithdrawals {USD: 50},
+# transactionCount 5 (transfers count too), mostRecentTransactionDate = latest timestamp
+GET {{baseUrl}}/accounts/ACC-12345/summary
+
+### A2: Summary of ACC-67890 (only received a transfer)
+# Expected 200: no deposits/withdrawals, transactionCount 1
+GET {{baseUrl}}/accounts/ACC-67890/summary
+
+### A3: Summary of an account with no transactions
+# Expected 200: empty totals, transactionCount 0, mostRecentTransactionDate null
+GET {{baseUrl}}/accounts/ACC-00000/summary
+
+###############################################################################
+# OPTION C: Transaction export  GET /transactions/export?format=csv
+###############################################################################
+
+### C1: Export all transactions as CSV
+# Expected 200, Content-Type: text/csv, Content-Disposition: attachment; filename="transactions.csv"
+GET {{baseUrl}}/transactions/export?format=csv
+
+### C2: format is optional, csv is the default
+GET {{baseUrl}}/transactions/export
+
+### C3: Export with filters (same filters as GET /transactions)
+GET {{baseUrl}}/transactions/export?format=csv&type=transfer
+
+### C4: Export one account's transactions
+GET {{baseUrl}}/transactions/export?format=csv&accountId=ACC-12345
+
+### C5: Export a date range (UTC, whole days)
+GET {{baseUrl}}/transactions/export?format=csv&from=2024-01-01&to=2030-12-31
+
+### C6: No matches -> only the header row
+GET {{baseUrl}}/transactions/export?format=csv&accountId=ACC-99999
+
+### C7: Unsupported format
+# Expected 400: {"error":"Validation failed","details":[{"field":"format",...}]}
+GET {{baseUrl}}/transactions/export?format=xml
+
+### C8: Invalid format AND invalid filter -> both errors reported
+GET {{baseUrl}}/transactions/export?format=xml&type=gift
+
+### C9: Sanity check - "export" is not treated as a transaction id
+# GET /transactions/:id must still work and return 404 for an unknown id
+GET {{baseUrl}}/transactions/does-not-exist
