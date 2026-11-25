@@ -10,14 +10,14 @@
 
 A minimal REST API for banking transactions built with **Node.js + Express**, using in-memory storage (no database). Data is lost when the server restarts.
 
-> 🚧 **Work in progress.** Currently implemented: **Task 1 (core API)** and **Task 2 (transaction validation)**. Still to do: filtering (Task 3) and an additional feature (Task 4).
+> 🚧 **Work in progress.** Currently implemented: **Task 1 (core API)**, **Task 2 (transaction validation)** and **Task 3 (transaction history filters)**. Still to do: an additional feature (Task 4).
 
 ### Endpoints
 
 | Method | Endpoint | Description | Status codes |
 |--------|----------|-------------|--------------|
 | `POST` | `/transactions` | Create a new transaction | 201, 400 |
-| `GET` | `/transactions` | List all transactions | 200 |
+| `GET` | `/transactions` | List transactions, optionally filtered (`accountId`, `type`, `from`, `to`) | 200, 400 |
 | `GET` | `/transactions/:id` | Get one transaction by ID | 200, 404 |
 | `GET` | `/accounts/:accountId/balance` | Get account balance | 200 |
 | `GET` | `/health` | Health check | 200 |
@@ -34,9 +34,11 @@ src/
 │   ├── transactions.js               # /transactions endpoints
 │   └── accounts.js                   # /accounts/:accountId/balance
 ├── models/transaction.js             # in-memory storage + create/find
-├── validators/transactionValidator.js
+├── validators/
+│   ├── transactionValidator.js       # POST body validation
+│   └── filterValidator.js            # GET /transactions query validation
 └── utils/
-    ├── helpers.js                    # balance calculation
+    ├── helpers.js                    # balance calculation + transaction filtering
     └── currencies.js                 # ISO 4217 currency code list
 ```
 
@@ -76,6 +78,23 @@ Extra decisions:
 - Lowercase currency codes (`usd`) and lowercase prefixes (`acc-12345`) are rejected — strict formats are easier to reason about.
 - The 2-decimal check compares to the nearest cent with a tiny tolerance, so `0.29` passes (floating point stores it as `0.28999…`) while `1.005` is correctly rejected.
 - `GET` endpoints don't validate account IDs; an unknown or malformed ID just returns an empty balance.
+
+### Transaction history filters (Task 3)
+
+`GET /transactions` accepts four optional query parameters. When several are given they are **all applied together (AND)**; with none, every transaction is returned.
+
+| Parameter | Matches | Example |
+|-----------|---------|---------|
+| `accountId` | Transactions where the account is the sender (`fromAccount`) **or** the receiver (`toAccount`) | `?accountId=ACC-12345` |
+| `type` | Exact type: `deposit`, `withdrawal` or `transfer` | `?type=transfer` |
+| `from` | Transactions at or after this moment | `?from=2024-01-01` |
+| `to` | Transactions at or before this moment | `?to=2024-01-31` |
+
+Decisions:
+- **Dates:** `from`/`to` accept `YYYY-MM-DD` or a full ISO 8601 datetime with timezone (`2024-01-31T10:00:00Z`). All dates are interpreted in **UTC**.
+- **Inclusive range:** a date-only `from` means the start of that day (`00:00:00.000`) and a date-only `to` means the **end** of that day (`23:59:59.999`), so `from=2024-01-31&to=2024-01-31` returns the whole day.
+- **Strict input:** invalid values return `400` with the same `{"error": "Validation failed", "details": [...]}` format instead of being silently ignored. That covers a bad account format, an unknown type, a non-date (`from=yesterday`), an impossible date (`2024-02-30`), `from` later than `to`, and a repeated parameter (`?type=a&type=b`). All problems are reported together.
+- **No match** is not an error: it returns `200` with `[]`.
 
 ---
 
@@ -172,7 +191,52 @@ Response — `200 OK` (after the deposit, transfer and withdrawal above):
 }
 ```
 
-### 5. Validation error examples (Task 2)
+### 5. Filter the history — `GET /transactions?...` (Task 3)
+
+Assuming these transactions exist (created with the examples above): a 500 USD deposit to `ACC-12345`, a 100.50 USD transfer `ACC-12345 → ACC-67890`, and a 50 USD withdrawal from `ACC-12345`.
+
+**By account** (sender or receiver) — returns all three above for `ACC-12345`, only the transfer for `ACC-67890`:
+```bash
+curl "http://localhost:3000/transactions?accountId=ACC-12345"
+curl "http://localhost:3000/transactions?accountId=ACC-67890"
+```
+
+**By type:**
+```bash
+curl "http://localhost:3000/transactions?type=transfer"
+```
+
+**By date range** (inclusive, whole days in UTC):
+```bash
+curl "http://localhost:3000/transactions?from=2024-01-01&to=2024-01-31"
+
+# only one boundary
+curl "http://localhost:3000/transactions?from=2024-01-01"
+curl "http://localhost:3000/transactions?to=2024-01-31"
+
+# a single day
+curl "http://localhost:3000/transactions?from=2024-01-15&to=2024-01-15"
+
+# exact time with an ISO 8601 datetime
+curl "http://localhost:3000/transactions?from=2024-01-15T09:00:00Z&to=2024-01-15T17:30:00Z"
+```
+
+**Combine filters** — transfers of `ACC-12345` during January 2024:
+```bash
+curl "http://localhost:3000/transactions?accountId=ACC-12345&type=transfer&from=2024-01-01&to=2024-01-31"
+```
+
+**Today's transactions** (handy for a quick demo, because timestamps are set by the server):
+```bash
+curl "http://localhost:3000/transactions?from=$(date -u +%F)&to=$(date -u +%F)"
+```
+
+**No matches** → `200 []`:
+```bash
+curl "http://localhost:3000/transactions?accountId=ACC-99999"
+```
+
+### 6. Validation error examples (Task 2)
 
 All of these return `400` with `{"error": "Validation failed", "details": [...]}`.
 
@@ -267,7 +331,37 @@ curl -i -X POST http://localhost:3000/transactions \
 
 ![All validation errors reported in one response](docs/screenshots/api-running-2.png)
 
-### 6. Other errors
+### 7. Invalid filters (Task 3)
+
+All return `400`. Invalid type:
+```bash
+curl -i "http://localhost:3000/transactions?type=gift"
+```
+```json
+{
+  "error": "Validation failed",
+  "details": [
+    { "field": "type", "message": "type must be one of: deposit, withdrawal, transfer" }
+  ]
+}
+```
+
+Other rejected requests:
+```bash
+curl -i "http://localhost:3000/transactions?accountId=12345"            # not ACC-XXXXX
+curl -i "http://localhost:3000/transactions?from=yesterday"             # not a date
+curl -i "http://localhost:3000/transactions?to=2024-02-30"              # impossible date
+curl -i "http://localhost:3000/transactions?from=2024-02-01&to=2024-01-01"  # from after to
+curl -i "http://localhost:3000/transactions?type=deposit&type=transfer" # repeated parameter
+```
+→ e.g. `{"field": "from", "message": "from must not be later than to"}`
+
+**Several invalid filters at once** — all errors are reported together:
+```bash
+curl -i "http://localhost:3000/transactions?accountId=bad&type=gift&from=x"
+```
+
+### 8. Other errors
 
 **Malformed JSON** → `400 {"error": "Invalid JSON body"}`:
 ```bash

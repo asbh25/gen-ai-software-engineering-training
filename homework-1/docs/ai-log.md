@@ -4,7 +4,7 @@
 **Stack:** Node.js + Express
 
 > One entry per meaningful prompt. Keep it short: what I asked, what AI did, what I changed or checked myself.
-> Screenshots live in `docs/screenshots/` (`ai-prompt-N.png` = prompt for entry #N, `api-running.png` = server + curl requests after Task 1, `api-running-2.png` = all validation errors in one response).
+> Screenshots live in `docs/screenshots/` (`ai-prompt-N.png` = prompt for entry #N, `api-running-1.png` = server + curl requests after Task 1, `api-running-2.png` = all validation errors in one response, `api-running-3.png` = invalid filter error).
 
 ---
 
@@ -65,7 +65,7 @@
 - **Design decisions:** balance counts only `completed` transactions; deposit → +toAccount, withdrawal → −fromAccount, transfer moves money; balance is returned **per currency** (`balances: {USD: 399.4}`) because mixed currencies can't be added together; unknown account → 200 with empty balances; no overdraft check.
 - **My changes / verification:** Tested all endpoints with curl: 201 on create, 200 on lists/balance, 400 on validation errors and bad JSON, 404 on unknown id/route. Balance check: 500 − 100.50 − 0.10 = 399.40 ✔.
 - **Screenshot:** ![AI prompt 6](screenshots/ai-prompt-6.png)
-- **API running (after Task 1):** ![API running](screenshots/api-running.png)
+- **API running (after Task 1):** ![API running](screenshots/api-running-1.png)
 
 ### #7 — Task 2: transaction validation
 - **Date:** 2026-11-25
@@ -76,3 +76,13 @@
 - **Screenshot:** ![AI prompt 7 (1/2)](screenshots/ai-prompt-7-1.png)
   ![AI prompt 7 (2/2)](screenshots/ai-prompt-7-2.png)
 - **Validation errors (all in one):** ![All validation errors](screenshots/api-running-2.png)
+
+### #8 — Task 3: basic transaction history (filters)
+- **Date:** 2026-11-25
+- **Prompt:** "Do the Task 3: Basic Transaction History"
+- **AI result:** Added `validators/filterValidator.js` (validates `accountId`, `type`, `from`, `to`), `filterTransactions()` in `utils/helpers.js`, and wired both into `GET /transactions`; documented the filters and curl examples in the README.
+- **Design decisions:** `accountId` matches sender **or** receiver; filters combine with AND; dates accept `YYYY-MM-DD` or ISO datetime in UTC; a date-only `to` includes the whole day (`23:59:59.999`); invalid filters return 400 in the same error format instead of being ignored; no matches → `200 []`.
+- **My changes / verification:** Checked the date logic with fabricated timestamps (boundaries `2024-01-31T23:59:59.999Z` included, `2024-02-01T00:00:00Z` excluded, `from == to` single day, `2024-02-30` rejected). Then tested over HTTP: account/type/date/combined filters, 400 cases, and an empty result. Used a separate port (`PORT=3100`) for tests so they don't touch the server running on 3000.
+- **Screenshot:** ![AI prompt 8 (1/2)](screenshots/ai-prompt-8-1.png)
+  ![AI prompt 8 (2/2)](screenshots/ai-prompt-8-2.png)
+- **Invalid filter (400):** ![Invalid filter error](screenshots/api-running-3.png)
