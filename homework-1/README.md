@@ -10,7 +10,7 @@
 
 A minimal REST API for banking transactions built with **Node.js + Express**, using in-memory storage (no database). Data is lost when the server restarts.
 
-> 🚧 **Work in progress.** Currently implemented: **Task 1 (core API)** with basic validation. Still to do: full validation (Task 2), filtering (Task 3), and an additional feature (Task 4).
+> 🚧 **Work in progress.** Currently implemented: **Task 1 (core API)** and **Task 2 (transaction validation)**. Still to do: filtering (Task 3) and an additional feature (Task 4).
 
 ### Endpoints
 
@@ -35,7 +35,9 @@ src/
 │   └── accounts.js                   # /accounts/:accountId/balance
 ├── models/transaction.js             # in-memory storage + create/find
 ├── validators/transactionValidator.js
-└── utils/helpers.js                  # balance calculation
+└── utils/
+    ├── helpers.js                    # balance calculation
+    └── currencies.js                 # ISO 4217 currency code list
 ```
 
 ---
@@ -56,14 +58,24 @@ src/
 | **Rounding** | Balances are rounded to 2 decimals | Avoids floating-point drift such as `0.1 + 0.2`. |
 | **Validation errors** | All errors collected and returned as `{ "error": "Validation failed", "details": [{ "field", "message" }] }` | Matches the format in `TASKS.md`. |
 
-### Current validation (basic)
+### Validation rules (Task 2)
 
-- `amount` must be a number greater than 0
-- `currency` must be a non-empty string
-- `type` must be `deposit`, `withdrawal` or `transfer`
-- Required accounts per type (see above)
+All rules run on `POST /transactions`. **Every** problem is collected and returned together, so the client can fix them in one go (`400` + `details` list).
 
-*Not yet validated (Task 2): max 2 decimal places, `ACC-XXXXX` account format, ISO 4217 currency codes.*
+| Field | Rule | Error message |
+|-------|------|---------------|
+| `amount` | Must be a number greater than 0 (strings like `"10"` are rejected) | `Amount must be a positive number` |
+| `amount` | At most 2 decimal places (`100.5` ✅, `100.555` ❌) | `Amount must have at most 2 decimal places` |
+| `currency` | Required; must be an **uppercase** ISO 4217 code (~160 active codes: USD, EUR, GBP, JPY, UAH, …) | `Currency is required` / `Invalid currency code (...)` |
+| `type` | One of `deposit`, `withdrawal`, `transfer` | `Type must be one of: deposit, withdrawal, transfer` |
+| `fromAccount` / `toAccount` | Format `ACC-XXXXX` — `ACC-` plus exactly 5 letters or digits (regex `^ACC-[A-Za-z0-9]{5}$`). Applies to **any** account that is sent, even when optional for the type | `Account must follow the format ACC-XXXXX (X is alphanumeric)` |
+| `fromAccount` / `toAccount` | Required depending on type (deposit → `toAccount`; withdrawal → `fromAccount`; transfer → both) | `<field> is required for <type>` |
+| `toAccount` | For a transfer it must differ from `fromAccount` | `toAccount must differ from fromAccount` |
+
+Extra decisions:
+- Lowercase currency codes (`usd`) and lowercase prefixes (`acc-12345`) are rejected — strict formats are easier to reason about.
+- The 2-decimal check compares to the nearest cent with a tiny tolerance, so `0.29` passes (floating point stores it as `0.28999…`) while `1.005` is correctly rejected.
+- `GET` endpoints don't validate account IDs; an unknown or malformed ID just returns an empty balance.
 
 ---
 
@@ -160,30 +172,102 @@ Response — `200 OK` (after the deposit, transfer and withdrawal above):
 }
 ```
 
-### 5. Error examples
+### 5. Validation error examples (Task 2)
 
-**Invalid amount and type** → `400`:
+All of these return `400` with `{"error": "Validation failed", "details": [...]}`.
+
+**Too many decimal places:**
 ```bash
 curl -i -X POST http://localhost:3000/transactions \
   -H "Content-Type: application/json" \
-  -d '{"toAccount": "ACC-12345", "amount": -5, "currency": "USD", "type": "gift"}'
+  -d '{"toAccount": "ACC-12345", "amount": 100.555, "currency": "USD", "type": "deposit"}'
+```
+```json
+{
+  "error": "Validation failed",
+  "details": [
+    { "field": "amount", "message": "Amount must have at most 2 decimal places" }
+  ]
+}
+```
+
+**Zero, negative or non-numeric amount:**
+```bash
+curl -i -X POST http://localhost:3000/transactions \
+  -H "Content-Type: application/json" \
+  -d '{"toAccount": "ACC-12345", "amount": -5, "currency": "USD", "type": "deposit"}'
+
+curl -i -X POST http://localhost:3000/transactions \
+  -H "Content-Type: application/json" \
+  -d '{"toAccount": "ACC-12345", "amount": "abc", "currency": "USD", "type": "deposit"}'
+```
+→ `{"field": "amount", "message": "Amount must be a positive number"}`
+
+**Invalid account format** (too short, too long, wrong prefix or special characters):
+```bash
+curl -i -X POST http://localhost:3000/transactions \
+  -H "Content-Type: application/json" \
+  -d '{"toAccount": "ACC-123", "amount": 10, "currency": "USD", "type": "deposit"}'
+```
+```json
+{
+  "error": "Validation failed",
+  "details": [
+    { "field": "toAccount", "message": "Account must follow the format ACC-XXXXX (X is alphanumeric)" }
+  ]
+}
+```
+Other rejected examples: `ACC-123456`, `ACC-12#45`, `acc-12345`, `12345`. Accepted: `ACC-12345`, `ACC-AB12Z`.
+
+**Invalid currency code:**
+```bash
+curl -i -X POST http://localhost:3000/transactions \
+  -H "Content-Type: application/json" \
+  -d '{"toAccount": "ACC-12345", "amount": 10, "currency": "XXX", "type": "deposit"}'
+```
+→ `{"field": "currency", "message": "Invalid currency code (use an uppercase ISO 4217 code, e.g. USD, EUR, GBP)"}`
+
+Also rejected: `"usd"` (lowercase), `"DOLLAR"`, `123`. Accepted: `"JPY"`, `"UAH"`, `"PLN"`.
+
+**Transfer to the same account:**
+```bash
+curl -i -X POST http://localhost:3000/transactions \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount": "ACC-12345", "toAccount": "ACC-12345", "amount": 10, "currency": "USD", "type": "transfer"}'
+```
+→ `{"field": "toAccount", "message": "toAccount must differ from fromAccount"}`
+
+**Transfer missing `fromAccount`:**
+```bash
+curl -i -X POST http://localhost:3000/transactions \
+  -H "Content-Type: application/json" \
+  -d '{"toAccount": "ACC-12345", "amount": 5, "currency": "USD", "type": "transfer"}'
+```
+→ `{"field": "fromAccount", "message": "fromAccount is required for transfer"}`
+
+**Everything wrong at once** — all errors are reported together:
+```bash
+curl -i -X POST http://localhost:3000/transactions \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount": "x", "toAccount": "y", "amount": -1.234, "currency": "ZZZ", "type": "transfer"}'
 ```
 ```json
 {
   "error": "Validation failed",
   "details": [
     { "field": "amount", "message": "Amount must be a positive number" },
-    { "field": "type", "message": "Type must be one of: deposit, withdrawal, transfer" }
+    { "field": "currency", "message": "Invalid currency code (use an uppercase ISO 4217 code, e.g. USD, EUR, GBP)" },
+    { "field": "fromAccount", "message": "Account must follow the format ACC-XXXXX (X is alphanumeric)" },
+    { "field": "toAccount", "message": "Account must follow the format ACC-XXXXX (X is alphanumeric)" }
   ]
 }
 ```
 
-**Transfer missing `fromAccount`** → `400`:
-```bash
-curl -i -X POST http://localhost:3000/transactions \
-  -H "Content-Type: application/json" \
-  -d '{"toAccount": "ACC-12345", "amount": 5, "currency": "USD", "type": "transfer"}'
-```
+📸 Real output from the running API:
+
+![All validation errors reported in one response](docs/screenshots/api-running-2.png)
+
+### 6. Other errors
 
 **Malformed JSON** → `400 {"error": "Invalid JSON body"}`:
 ```bash

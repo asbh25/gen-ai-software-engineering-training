@@ -4,7 +4,7 @@
 **Stack:** Node.js + Express
 
 > One entry per meaningful prompt. Keep it short: what I asked, what AI did, what I changed or checked myself.
-> Screenshots live in `docs/screenshots/` (`ai-prompt-N.png` = prompt for entry #N, `api-running.png` = server + curl requests after Task 1).
+> Screenshots live in `docs/screenshots/` (`ai-prompt-N.png` = prompt for entry #N, `api-running.png` = server + curl requests after Task 1, `api-running-2.png` = all validation errors in one response).
 
 ---
 
@@ -66,3 +66,13 @@
 - **My changes / verification:** Tested all endpoints with curl: 201 on create, 200 on lists/balance, 400 on validation errors and bad JSON, 404 on unknown id/route. Balance check: 500 − 100.50 − 0.10 = 399.40 ✔.
 - **Screenshot:** ![AI prompt 6](screenshots/ai-prompt-6.png)
 - **API running (after Task 1):** ![API running](screenshots/api-running.png)
+
+### #7 — Task 2: transaction validation
+- **Date:** 2026-11-25
+- **Prompt:** "Do the task 2: Transaction Validation, add some new samples to README.md"
+- **AI result:** Rewrote `validators/transactionValidator.js` (max 2 decimals, `ACC-XXXXX` regex, ISO 4217 whitelist in new `utils/currencies.js`, all errors collected); added a validation-rules table and ~8 new curl examples to the README.
+- **Design decisions:** strict formats (uppercase currency, `ACC-` prefix); any *provided* account is format-checked even when optional for the type; GET endpoints don't validate IDs. The 2-decimal check uses a cents tolerance so `0.29` passes and `1.005` fails.
+- **My changes / verification:** Tested 15+ cases with curl (`100.5` ✅, `0.29` ✅, `100.555` ❌, `1.005` ❌, `ACC-1234` ❌, `ACC-AB12Z` ✅, `usd` ❌, `XXX` ❌, all-wrong body returns 4 errors). First HTTP run still showed old behaviour because an older server was still running on port 3000 — caught by comparing against a direct call of the validator, then re-tested on a clean port.
+- **Screenshot:** ![AI prompt 7 (1/2)](screenshots/ai-prompt-7-1.png)
+  ![AI prompt 7 (2/2)](screenshots/ai-prompt-7-2.png)
+- **Validation errors (all in one):** ![All validation errors](screenshots/api-running-2.png)
